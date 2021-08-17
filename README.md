@@ -12,7 +12,9 @@ xdmf = XDMFFile("my-output.xdmf")
 
 # Topology: Integer array of shape (nDims, nSimplices) where nDims is 3 (triangles) or 4 (simplices)
 # Geometry: Float array of shape (3, nPoints)
-topology, geometry = grid_of(xdmf) 
+topology, geometry = grid_of(xdmf)
+
+# Returns a float array of nTimesteps elements containing the respective timestamps
 timesteps = timesteps_of(xdmf)
 
 # Read the values of variable "u" at timestep 3 into an array. (Timesteps are indexed starting at 1!)
