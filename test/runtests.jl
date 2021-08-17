@@ -1,7 +1,7 @@
 using Test
 using SeisSolXDMF
 
-@testset "IO" begin
+@testset "XDMF" begin
     workdir = pwd()
     if endswith(workdir, "test")
         cd("..")
