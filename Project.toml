@@ -6,3 +6,8 @@ version = "1.0.0"
 [deps]
 HDF5 = "f67ccb44-e63f-5c2f-98bd-6dc0ccc4ba2f"
 XMLDict = "228000da-037f-5747-90a9-8195ccbf91a5"
+
+[compat]
+julia = "^1.6"
+HDF5 = "^0.15.6"
+XMLDict = "^0.4.1"
