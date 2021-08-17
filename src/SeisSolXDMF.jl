@@ -2,6 +2,9 @@ module SeisSolXDMF
 
 export XDMFFile, timesteps_of, grid_of, data_of
 
+using XMLDict
+using HDF5
+
     struct XDMFFile
         xml         :: XMLDict.XMLDictElement
         base_path   :: AbstractString
@@ -39,11 +42,11 @@ export XDMFFile, timesteps_of, grid_of, data_of
     function grid_of(xdmf::XDMFFile) :: Tuple{AbstractArray{Integer, 2}, AbstractArray{AbstractFloat, 2}}
         # Read geometry (points) and topology (simplices (triangles/tetrahedra)) files.
         # Since the ids of the points referred to in the topology array start at 0 (and Julia counts from 1) we have to add 1.
-        simplices = read_dataset(xdmf.timesteps[1]["Topology"]["DataItem"], xdmf.base_path) .+ 1
+        simplices = read_dataset(xdmf, xdmf.timesteps[1]["Topology"]["DataItem"]) .+ 1
         expect(ndims(simplices) == 2, "Topology should have 2 dimensions but has $(ndims(simplices)).")
         expect(size(simplices, 1) ∈ (3, 4), "Topology entries must have 3 (triangles) or 4 (tetrahedra) points but have $(size(simplices, 1)).")
 
-        points = read_dataset(xdmf.timesteps[1]["Geometry"]["DataItem"], xdmf.base_path)
+        points = read_dataset(xdmf, xdmf.timesteps[1]["Geometry"]["DataItem"])
         expect(ndims(points) == 2, "Geometry should have 2 dimensions but has $(ndims(simplices)).")
         expect(size(points, 1) == 3, "Geometry entries must have 3 coordinates but have $(size(simplices, 1)).")
 
@@ -54,15 +57,17 @@ export XDMFFile, timesteps_of, grid_of, data_of
         expect(timestep >= 1, "Timestep $(timestep) is smaller than 1.")
         expect(timestep <= length(xdmf.timesteps), "Timestep $(timestep) exceeds number of timesteps in XDMF file ($(length(xdmf.timesteps))).")
 
-        grid = xdmf.timesteps[timestep]
-        var_entry = findfirst(attr -> attr[:Name] == var_name, grid["Attribute"])
-        expect(!isnothing(var_entry), """Variable $var_name not found in timestep $timestep. 
-            Found variables: $(join(map(attr -> attr[:Name], grid["Attribute"]), ", ")).""")
+        attrs = xdmf.timesteps[timestep]["Attribute"]
+        var_index = findfirst(attr -> attr[:Name] == var_name, attrs)
+        expect(!isnothing(var_index), """Variable $var_name not found in timestep $timestep. 
+            Found variables: $(join(map(attr -> attr[:Name], attrs), ", ")).""")
 
-        return read_hyperslab(xdmf, var_entry)
+        var_entry = attrs[var_index]["DataItem"]
+
+        return reshape(read_hyperslab(xdmf, var_entry), :)
     end
         
-    function read_dataset(xdmf::XDMFFile, data_item::XMLDict.XMLDictElement; indices=(:,:))
+    function read_dataset(xdmf::XDMFFile, data_item::XMLDict.XMLDictElement; indices=nothing)
         filename = data_item[""]
 
         file_range = data_item[:Dimensions]
@@ -79,12 +84,19 @@ export XDMFFile, timesteps_of, grid_of, data_of
             filename = joinpath(xdmf.base_path, path_parts[1])
             hdf_dataset_path = String(path_parts[2])
 
-            dataset = h5read(filename, hdf_dataset_path, (indices[1,1]:indices[2,1]:indices[3,1], indices[1,2]:indices[2,2]:indices[3,2]))
+            dataset = 
+                if isnothing(indices)
+                    h5read(filename, hdf_dataset_path)
+                else
+                    h5read(filename, hdf_dataset_path, (
+                        indices[1,2]:indices[2,2]:(indices[1,2] + indices[3,2] - 1),
+                        indices[1,1]:indices[2,1]:(indices[1,1] + indices[3,1] - 1)))
+                end
         else
             filename = joinpath(xdmf.base_path, filename)
             start_index = (indices[1,1]-1) * file_period + (indices[1,2]-1) # Starting at 0
             stride = (indices[2,1]-1) * file_period + (indices[2,2]-1)
-            @assert stride == 0 # Don't handle stride in POSIX output (no need (?))
+            expect(stride == 0, "Stride not yet supported for POSIX output.") # (no need (?))
             dataset = Array{number_type, 2}(undef, (indices[3,1], indices[3,2]))
             open(filename, "r") do file
                 seek(file, start_index * sizeof(number_type))
@@ -113,7 +125,7 @@ export XDMFFile, timesteps_of, grid_of, data_of
 
         rng = range_item[""]
         rng = split(rng, ' ')
-        rng = parse.(UInt, rng)
+        rng = parse.(Int, rng)
         rng = reshape(rng, (2, 3))'
 
         rng[1,:] .+= 1 # Julia start indices
