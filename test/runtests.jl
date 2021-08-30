@@ -1,13 +1,11 @@
 using Test
 using SeisSolXDMF
+using Pkg.Artifacts
 
 @testset "XDMF" begin
-    workdir = pwd()
-    if endswith(workdir, "test")
-        cd("..")
-    end
+    test_resources_path = artifact"test_resources"
 
-    filename = "test_resources/output-surface-h5.xdmf"
+    filename = joinpath(test_resources_path, "output-surface-h5.xdmf")
     xdmf = XDMFFile(filename)
 
     @testset "Header" begin
@@ -31,7 +29,7 @@ using SeisSolXDMF
         @test maximum(u) > 0.
     end
 
-    filename = "test_resources/output-volume-bin.xdmf"
+    filename = joinpath(test_resources_path, "output-volume-bin.xdmf")
     xdmf = XDMFFile(filename)
 
     @testset "POSIX - Volume" begin
