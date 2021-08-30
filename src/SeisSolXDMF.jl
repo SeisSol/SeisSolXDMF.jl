@@ -57,13 +57,19 @@ using HDF5
         expect(timestep >= 1, "Timestep $(timestep) is smaller than 1.")
         expect(timestep <= length(xdmf.timesteps), "Timestep $(timestep) exceeds number of timesteps in XDMF file ($(length(xdmf.timesteps))).")
 
-        attrs = xdmf.timesteps[timestep]["Attribute"]
-        var_index = findfirst(attr -> attr[:Name] == var_name, attrs)
-        expect(!isnothing(var_index), """Variable $var_name not found in timestep $timestep. 
-            Found variables: $(join(map(attr -> attr[:Name], attrs), ", ")).""")
+        attr_or_list = xdmf.timesteps[timestep]["Attribute"]
+        var_entry = if isa(attr_or_list, AbstractArray)
+            var_index = findfirst(attr -> attr[:Name] == var_name, attr_or_list)
+            expect(!isnothing(var_index), """Variable $var_name not found in timestep $timestep. 
+                Found variables: $(join(map(attr -> attr[:Name], attr_or_list), ", ")).""")
+            
+            attr_or_list[var_index]["DataItem"]
+        else
+            attr = attr_or_list
+            expect(attr[:Name] == var_name, """Variable $var_name not found in timestep $timestep. Found variable: $(attr[:Name]).""")
 
-        var_entry = attrs[var_index]["DataItem"]
-
+            attr["DataItem"]
+        end
         return reshape(read_hyperslab(xdmf, var_entry), :)
     end
         
@@ -72,7 +78,7 @@ using HDF5
 
         file_range = data_item[:Dimensions]
         file_range = split(file_range, ' ')
-        file_range = parse.(UInt, file_range)
+        file_range = parse.(Int, file_range)
         file_period = file_range[2]
 
         number_type = get_number_type(data_item)
@@ -86,7 +92,7 @@ using HDF5
 
             dataset = 
                 if isnothing(indices)
-                    h5read(filename, hdf_dataset_path)
+                    h5read(filename, hdf_dataset_path, (1:file_range[2], 1:file_range[1]))
                 else
                     h5read(filename, hdf_dataset_path, (
                         indices[1,2]:indices[2,2]:(indices[1,2] + indices[3,2] - 1),
@@ -94,10 +100,17 @@ using HDF5
                 end
         else
             filename = joinpath(xdmf.base_path, filename)
-            start_index = (indices[1,1]-1) * file_period + (indices[1,2]-1) # Starting at 0
-            stride = (indices[2,1]-1) * file_period + (indices[2,2]-1)
-            expect(stride == 0, "Stride not yet supported for POSIX output.") # (no need (?))
-            dataset = Array{number_type, 2}(undef, (indices[3,1], indices[3,2]))
+
+            if !isnothing(indices)
+                start_index = (indices[1,1]-1) * file_period + (indices[1,2]-1) # Starting at 0
+                stride = (indices[2,1]-1) * file_period + (indices[2,2]-1)
+                expect(stride == 0, "Stride not yet supported for POSIX output.") # (no need (?))
+                read_size = (indices[3,2], indices[3,1])
+            else
+                start_index = 0
+                read_size = (file_range[2], file_range[1])
+            end
+            dataset = Array{number_type, 2}(undef, read_size)
             open(filename, "r") do file
                 seek(file, start_index * sizeof(number_type))
                 read!(file, dataset)
