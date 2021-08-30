@@ -1,6 +1,5 @@
-# Example Artifacts.toml file
 [test_resources]
-git-tree-sha1 = "50a0598b5d5ae196e60e071c3a66b16834ef5839"
+git-tree-sha1 = "93fdeaa6beb95a324964f197e7726c0928f0c47c"
 
     [[test_resources.download]]
     url = "https://github.com/mtronicsDev/SeisSolXDMF_test_resources/releases/download/v1.0.1/SeisSolXDMF_test_resources_v1.0.1.tar.gz"
