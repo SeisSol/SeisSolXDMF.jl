@@ -70,7 +70,15 @@ using HDF5
 
             attr["DataItem"]
         end
-        return reshape(read_hyperslab(xdmf, var_entry), :)
+        if is_hyperslab(var_entry)
+            return reshape(SeisSolXDMF.read_hyperslab(xdmf, var_entry), :)
+        else
+            return reshape(read_dataitem_wo_offset(xdmf, var_entry), :)
+        end
+    end
+
+    function is_hyperslab(d)
+        :ItemType in keys(d) && d[:ItemType] == "HyperSlab"
     end
         
     function read_dataset(xdmf::XDMFFile, data_item::XMLDict.XMLDictElement; indices=nothing)
@@ -79,7 +87,11 @@ using HDF5
         file_range = data_item[:Dimensions]
         file_range = split(file_range, ' ')
         file_range = parse.(Int, file_range)
-        file_period = file_range[2]
+		file_period = if length(file_range) > 1
+			file_range[2]
+		else
+			1
+		end
 
         number_type = get_number_type(data_item)
 
@@ -92,7 +104,7 @@ using HDF5
 
             dataset = 
                 if isnothing(indices)
-                    h5read(filename, hdf_dataset_path, (1:file_range[2], 1:file_range[1]))
+                    h5read(filename, hdf_dataset_path, (1:file_period, 1:file_range[1]))
                 else
                     h5read(filename, hdf_dataset_path, (
                         indices[1,2]:indices[2,2]:(indices[1,2] + indices[3,2] - 1),
@@ -108,7 +120,7 @@ using HDF5
                 read_size = (indices[3,2], indices[3,1])
             else
                 start_index = 0
-                read_size = (file_range[2], file_range[1])
+                read_size = (file_period, file_range[1])
             end
             dataset = Array{number_type, 2}(undef, read_size)
             open(filename, "r") do file
@@ -144,6 +156,19 @@ using HDF5
         rng[1,:] .+= 1 # Julia start indices
 
         return read_dataset(xdmf, binary_item, indices=rng)
+    end
+
+    function read_dataitem_wo_offset(xdmf::XDMFFile, data_item::XMLDict.XMLDictElement)
+        #=
+        Example DataItem:
+    #     <DataItem  NumberType="Int" Precision="4" Format="Binary" Dimensions="20385072">out_cell/mesh0/u.bin/partition.bin</DataItem>
+        =#
+
+        binary_item = data_item
+        
+        expect(binary_item[:Format] ∈ ["Binary", "HDF"], "Unexpected format '$(binary_item[:Format])', expected 'Binary' or 'HDF'.")
+        
+        return read_dataset(xdmf, binary_item, indices=nothing)
     end
 
     function get_number_type(data_item::XMLDict.XMLDictElement) :: Type
